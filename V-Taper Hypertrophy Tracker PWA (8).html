@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>V-Taper Hypertrophy Tracker PWA</title>
+  
+  <!-- Web App Metadata for PWA Installation -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="V-Taper PWA" />
+  <meta name="theme-color" content="#0f172a" />
+  
+  <!-- Tailwind CSS & Chart.js CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#0f172a',
+              card: '#1e293b',
+              border: '#334155',
+              accent: '#3b82f6',
+              progress: '#10b981',
+              hold: '#f59e0b',
+              reset: '#ef4444',
+              free: '#8b5cf6'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .card-border-progress { border-left: 6px solid #10b981; }
+    .card-border-hold { border-left: 6px solid #f59e0b; }
+    .card-border-reset { border-left: 6px solid #ef4444; }
+    .card-border-free { border-left: 6px solid #8b5cf6; }
+    
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="pb-24 antialiased min-h-screen">
+
+  <!-- Header Section -->
+  <header class="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3">
+    <div class="max-w-xl mx-auto flex items-center justify-between">
+      <div>
+        <h1 class="text-lg font-bold text-white flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+          V-Taper Tracker PWA
+        </h1>
+        <p class="text-xs text-slate-400" id="headerSubtitle">Day 20 - Oct 27, 2026</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="exportData()" class="px-2.5 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 font-medium transition">Export</button>
+        <button onclick="document.getElementById('importFile').click()" class="px-2.5 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded border border-slate-700 font-medium transition">Import</button>
+        <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)" />
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs Bar -->
+  <div class="max-w-xl mx-auto px-4 mt-3">
+    <div class="flex rounded-lg bg-slate-800/80 p-1 border border-slate-700">
+      <button id="tabBtnPlanner" onclick="switchTab('planner')" class="flex-1 py-2 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all">Active Session</button>
+      <button id="tabBtnCharts" onclick="switchTab('charts')" class="flex-1 py-2 text-xs font-semibold rounded-md text-slate-400 hover:text-white transition-all">Progress & Charts</button>
+      <button id="tabBtnGuide" onclick="switchTab('guide')" class="flex-1 py-2 text-xs font-semibold rounded-md text-slate-400 hover:text-white transition-all">App Guide</button>
+    </div>
+  </div>
+
+  <!-- Notification Banner -->
+  <div id="toastMessage" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-blue-500/50 text-white text-xs px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2">
+    <span id="toastText">Action completed successfully.</span>
+  </div>
+
+  <main class="max-w-xl mx-auto px-4 mt-4">
+
+    <!-- TAB 1: ACTIVE SESSION PLANNER -->
+    <div id="tabPlanner" class="space-y-4">
+      
+      <!-- Session Date & Day Selector Bar -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold text-slate-400">Target Session:</span>
+          <input type="number" id="sessionDayInput" value="20" onchange="updateSessionMetadata()" class="w-14 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-center font-bold text-blue-400 text-xs focus:outline-none focus:border-blue-500" />
+          <span class="text-xs font-semibold text-slate-400">Day</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="date" id="sessionDateInput" value="2026-10-27" onchange="updateSessionMetadata()" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-blue-500" />
+        </div>
+      </div>
+
+      <!-- Summary Stats Bar -->
+      <div class="bg-slate-800/60 border border-slate-700/80 rounded-xl p-3 flex justify-between items-center text-xs">
+        <div>
+          <span class="text-slate-400">Total Program Reps:</span>
+          <span class="font-bold text-blue-400 ml-1 text-sm" id="totalRepsDisplay">5,194</span>
+        </div>
+        <div>
+          <span class="text-slate-400">Active Exercises:</span>
+          <span class="font-bold text-slate-200 ml-1 text-sm" id="exerciseCount">10</span>
+        </div>
+      </div>
+
+      <!-- Add Custom Exercise Dropdown Header -->
+      <details class="bg-slate-800/40 border border-slate-700/60 rounded-xl p-3 text-xs">
+        <summary class="font-semibold text-slate-300 cursor-pointer flex items-center justify-between select-none">
+          <span>+ Add Exercise to Active Session</span>
+          <span class="text-slate-500">Expand</span>
+        </summary>
+        <div class="mt-3 space-y-2 pt-2 border-t border-slate-700/50">
+          <input type="text" id="newExName" placeholder="Exercise Name (e.g. Incline Dumbbell Bench)" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-blue-500" />
+          <div class="flex gap-2">
+            <input type="text" id="newExTarget" placeholder="Target (e.g. 3 x 8-10 reps)" class="w-1/2 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-blue-500" />
+            <input type="number" step="0.5" id="newExWeight" placeholder="Weight (kg)" class="w-1/2 bg-slate-900 border border-slate-700 rounded px-3 py-1.5 text-slate-200 text-xs focus:outline-none focus:border-blue-500" />
+          </div>
+          <button onclick="addCustomExercise()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 rounded-lg transition">Add to Active Session</button>
+        </div>
+      </details>
+
+      <!-- Exercise Cards Container -->
+      <div id="exerciseList" class="space-y-3.5">
+        <!-- Dynamic Cards Injected Here -->
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="pt-2 space-y-2">
+        <button onclick="commitSessionToMemory()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+          Commit & Save Session to Graph Memory
+        </button>
+
+        <button onclick="copyWorkoutSummary()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 text-xs">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+          Copy Workout Summary for AI Analysis
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 2: PROGRESS & CHARTS -->
+    <div id="tabCharts" class="hidden space-y-6">
+      
+      <!-- Combined Master Chart -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 shadow-md">
+        <h3 class="text-sm font-bold text-white mb-1">Master Load Progression (Days 1–19+)</h3>
+        <p class="text-xs text-slate-400 mb-3">Click chips below to toggle exercises on the load comparison graph.</p>
+        
+        <!-- Toggle Chips -->
+        <div id="masterChartChips" class="flex flex-wrap gap-1.5 mb-3 max-h-32 overflow-y-auto pr-1">
+          <!-- Dynamically populated -->
+        </div>
+
+        <div style="position: relative; height: 260px; width: 100%;">
+          <canvas id="masterChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Cumulative Reps Chart -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 shadow-md">
+        <h3 class="text-sm font-bold text-white mb-1">Cumulative Repetition Milestone</h3>
+        <p class="text-xs text-slate-400 mb-3">Total volume accumulation across all completed sessions.</p>
+        <div style="position: relative; height: 200px; width: 100%;">
+          <canvas id="cumRepsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Single Exercise Viewer -->
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 shadow-md">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-white">Individual Exercise History</h3>
+          <select id="singleExSelect" onchange="updateSingleExChart()" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded px-2 py-1 focus:outline-none focus:border-blue-500">
+            <!-- Populated dynamically -->
+          </select>
+        </div>
+        <div style="position: relative; height: 220px; width: 100%;">
+          <canvas id="singleExChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 3: APP GUIDE & PWA SETUP -->
+    <div id="tabGuide" class="hidden space-y-4">
+      <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 text-xs text-slate-300 space-y-3 shadow-md">
+        <h3 class="text-sm font-bold text-white border-b border-slate-700 pb-2">PWA Installation & Setup</h3>
+        <ol class="list-decimal list-inside space-y-2 text-slate-300">
+          <li>Save this file locally as <strong>index.html</strong> or host it on <strong>Netlify / GitHub Pages</strong>.</li>
+          <li>Open the HTTPS link in <strong>Safari (iOS)</strong> or <strong>Chrome (Android)</strong>.</li>
+          <li>Tap <strong>Share → Add to Home Screen</strong> (iOS) or <strong>Menu (⋮) → Install App</strong> (Android).</li>
+          <li>Launch directly from your home screen with offline local memory!</li>
+        </ol>
+
+        <h3 class="text-sm font-bold text-white border-b border-slate-700 pb-2 pt-2">Committing Workouts to Memory</h3>
+        <p class="leading-relaxed">When you complete your active workout, click <strong>"Commit & Save Session to Graph Memory"</strong>. Your weight and total reps will be saved directly to your lifetime graph dataset and stored securely in local browser storage.</p>
+
+        <h3 class="text-sm font-bold text-white border-b border-slate-700 pb-2 pt-2">Data Protection Safeguards</h3>
+        <p class="leading-relaxed">Your 17 strict historical exercises and 19 days of historical data (Aug 30 - Oct 24, 2026, totaling 5,194 reps) are hardcoded into script memory as an immutable fallback dataset.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Strict 17 Historical Exercises Data Fallback (Days 1-19, Aug 30 - Oct 24, 2026)
+    const BASE_STRICT_HISTORY = {
+      "Chest Press": [
+        {day: 1, date: "Aug 30", weight: 35, reps: 30},
+        {day: 3, date: "Sep 05", weight: 40, reps: 30},
+        {day: 5, date: "Sep 09", weight: 42.5, reps: 30},
+        {day: 9, date: "Sep 23", weight: 45, reps: 30},
+        {day: 14, date: "Oct 06", weight: 47.5, reps: 28},
+        {day: 18, date: "Oct 20", weight: 47.5, reps: 30},
+        {day: 19, date: "Oct 24", weight: 47.5, reps: 27}
+      ],
+      "Lat Machine": [
+        {day: 1, date: "Aug 30", weight: 40, reps: 30},
+        {day: 4, date: "Sep 07", weight: 45, reps: 30},
+        {day: 8, date: "Sep 18", weight: 47.5, reps: 30},
+        {day: 12, date: "Sep 30", weight: 50, reps: 30},
+        {day: 16, date: "Oct 12", weight: 50, reps: 30},
+        {day: 19, date: "Oct 24", weight: 50, reps: 30}
+      ],
+      "Shoulder Press": [
+        {day: 1, date: "Aug 30", weight: 15, reps: 30},
+        {day: 5, date: "Sep 09", weight: 17.5, reps: 30},
+        {day: 10, date: "Sep 25", weight: 20, reps: 30},
+        {day: 15, date: "Oct 09", weight: 22.5, reps: 24},
+        {day: 18, date: "Oct 20", weight: 22.5, reps: 27},
+        {day: 19, date: "Oct 24", weight: 20, reps: 24}
+      ],
+      "Cable Lower Chest Fly": [
+        {day: 2, date: "Sep 02", weight: 7.5, reps: 36},
+        {day: 6, date: "Sep 13", weight: 10, reps: 36},
+        {day: 11, date: "Sep 27", weight: 10, reps: 36},
+        {day: 17, date: "Oct 16", weight: 10, reps: 36},
+        {day: 19, date: "Oct 24", weight: 10, reps: 36}
+      ],
+      "Cable Upright Row": [
+        {day: 2, date: "Sep 02", weight: 15, reps: 36},
+        {day: 7, date: "Sep 15", weight: 17.5, reps: 36},
+        {day: 13, date: "Oct 02", weight: 20, reps: 36},
+        {day: 18, date: "Oct 20", weight: 20, reps: 36},
+        {day: 19, date: "Oct 24", weight: 20, reps: 36}
+      ],
+      "Face Pull": [
+        {day: 2, date: "Sep 02", weight: 12.5, reps: 50},
+        {day: 8, date: "Sep 18", weight: 15, reps: 50},
+        {day: 14, date: "Oct 06", weight: 17.5, reps: 50},
+        {day: 18, date: "Oct 20", weight: 17.5, reps: 54},
+        {day: 19, date: "Oct 24", weight: 17.5, reps: 51}
+      ],
+      "Tricep Pushdown": [
+        {day: 1, date: "Aug 30", weight: 12.5, reps: 45},
+        {day: 6, date: "Sep 13", weight: 15, reps: 45},
+        {day: 12, date: "Sep 30", weight: 17.5, reps: 45},
+        {day: 17, date: "Oct 16", weight: 20, reps: 45},
+        {day: 19, date: "Oct 24", weight: 15, reps: 45}
+      ],
+      "Goblet Squat": [
+        {day: 3, date: "Sep 05", weight: 16, reps: 30},
+        {day: 7, date: "Sep 15", weight: 20, reps: 30},
+        {day: 11, date: "Sep 27", weight: 24, reps: 30}
+      ],
+      "Pendulum Squat": [
+        {day: 15, date: "Oct 09", weight: 0, reps: 24},
+        {day: 17, date: "Oct 16", weight: 1.25, reps: 24},
+        {day: 19, date: "Oct 24", weight: 2.5, reps: 24}
+      ],
+      "Leg Extension": [
+        {day: 3, date: "Sep 05", weight: 35, reps: 36},
+        {day: 9, date: "Sep 23", weight: 40, reps: 36},
+        {day: 14, date: "Oct 06", weight: 45, reps: 36}
+      ],
+      "Leg Curl": [
+        {day: 4, date: "Sep 07", weight: 30, reps: 36},
+        {day: 10, date: "Sep 25", weight: 35, reps: 36},
+        {day: 16, date: "Oct 12", weight: 40, reps: 36}
+      ],
+      "Cable Upward Chest Fly": [
+        {day: 5, date: "Sep 09", weight: 7.5, reps: 36},
+        {day: 13, date: "Oct 02", weight: 10, reps: 36}
+      ],
+      "Hanging Knee Raises": [
+        {day: 1, date: "Aug 30", weight: 0, reps: 30},
+        {day: 10, date: "Sep 25", weight: 0, reps: 30},
+        {day: 19, date: "Oct 24", weight: 0, reps: 30}
+      ],
+      "Ab Wheel": [
+        {day: 4, date: "Sep 07", weight: 0, reps: 30},
+        {day: 12, date: "Sep 30", weight: 0, reps: 30}
+      ],
+      "Dumbell Curl": [
+        {day: 2, date: "Sep 02", weight: 10, reps: 30},
+        {day: 8, date: "Sep 18", weight: 12, reps: 30}
+      ],
+      "Chest Press Bench": [
+        {day: 6, date: "Sep 13", weight: 30, reps: 30},
+        {day: 13, date: "Oct 02", weight: 35, reps: 30}
+      ],
+      "Pectoral": [
+        {day: 7, date: "Sep 15", weight: 25, reps: 30},
+        {day: 15, date: "Oct 09", weight: 30, reps: 30}
+      ]
+    };
+
+    const BASE_CUMULATIVE_REPS = [
+      {day: 1, date: "Aug 30", cum_reps: 216},
+      {day: 2, date: "Sep 02", cum_reps: 450},
+      {day: 3, date: "Sep 05", cum_reps: 756},
+      {day: 4, date: "Sep 07", cum_reps: 1062},
+      {day: 5, date: "Sep 09", cum_reps: 1344},
+      {day: 6, date: "Sep 13", cum_reps: 1584},
+      {day: 7, date: "Sep 15", cum_reps: 1844},
+      {day: 8, date: "Sep 18", cum_reps: 2078},
+      {day: 9, date: "Sep 23", cum_reps: 2380},
+      {day: 10, date: "Sep 25", cum_reps: 2605},
+      {day: 11, date: "Sep 27", cum_reps: 2879},
+      {day: 12, date: "Sep 30", cum_reps: 3125},
+      {day: 13, date: "Oct 02", cum_reps: 3383},
+      {day: 14, date: "Oct 06", cum_reps: 3659},
+      {day: 15, date: "Oct 09", cum_reps: 3945},
+      {day: 16, date: "Oct 12", cum_reps: 4230},
+      {day: 17, date: "Oct 16", cum_reps: 4530},
+      {day: 18, date: "Oct 20", cum_reps: 4875},
+      {day: 19, date: "Oct 24", cum_reps: 5166}
+    ];
+
+    const DEFAULT_ACTIVE_ROUTINE = [
+      { id: "ex_1", name: "Chest Press", status: "HOLD", target: "3 x 8-10 reps", weight: 47.5, sets: [9, 9, 9], note: "Hold load to secure clean form" },
+      { id: "ex_2", name: "Lat Machine", status: "HOLD", target: "3 x 10 reps", weight: 50.0, sets: [10, 10, 10], note: "Hold weight (5th session at 50kg)" },
+      { id: "ex_3", name: "Shoulder Press", status: "RESET", target: "3 x 8 reps", weight: 20.0, sets: [8, 8, 8], note: "Reset to 8 reps to eliminate neck strain" },
+      { id: "ex_4", name: "Pendulum Squat", status: "PROGRESS", target: "3 x 8 reps", weight: 2.5, sets: [8, 8, 8], note: "Add 2.5kg total load" },
+      { id: "ex_5", name: "Cable Lower Chest Fly", status: "HOLD", target: "3 x 12 reps", weight: 10.0, sets: [12, 12, 12], note: "Keep constant tension" },
+      { id: "ex_6", name: "Cable Upright Row", status: "PROGRESS", target: "3 x 10-12 reps", weight: 20.0, sets: [12, 12, 12], note: "Drive up with elbows" },
+      { id: "ex_7", name: "Face Pull", status: "PROGRESS", target: "3 x 17-19 reps", weight: 17.5, sets: [18, 17, 16], note: "High-rep rear delt burn" },
+      { id: "ex_8", name: "Tricep Pushdown", status: "HOLD", target: "3 x 15 reps", weight: 15.0, sets: [15, 15, 15], note: "Controlled eccentric" },
+      { id: "ex_9", name: "Hanging Knee Raises", status: "PROGRESS", target: "3 x 10 reps (3s hold)", weight: 0, sets: [10, 10, 10], note: "Squeeze 3 seconds at top" },
+      { id: "ex_10", name: "Ab Wheel", status: "PROGRESS", target: "3 x 10 reps", weight: 0, sets: [10, 10, 10], note: "Full extension hold" }
+    ];
+
+    let activeRoutine = [];
+    let historyData = {};
+    let cumRepsData = [];
+    let masterChartInstance = null;
+    let singleChartInstance = null;
+    let cumChartInstance = null;
+
+    // Initialization on DOM Load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadHistory();
+      loadStoredRoutine();
+      renderExerciseList();
+      initCharts();
+      initSingleExSelect();
+      updateTotalRepsDisplay();
+    });
+
+    function loadHistory() {
+      const savedHist = localStorage.getItem('vtaper_history');
+      if (savedHist) {
+        try { historyData = JSON.parse(savedHist); } catch(e) { historyData = JSON.parse(JSON.stringify(BASE_STRICT_HISTORY)); }
+      } else {
+        historyData = JSON.parse(JSON.stringify(BASE_STRICT_HISTORY));
+      }
+
+      const savedCum = localStorage.getItem('vtaper_cum_reps');
+      if (savedCum) {
+        try { cumRepsData = JSON.parse(savedCum); } catch(e) { cumRepsData = JSON.parse(JSON.stringify(BASE_CUMULATIVE_REPS)); }
+      } else {
+        cumRepsData = JSON.parse(JSON.stringify(BASE_CUMULATIVE_REPS));
+      }
+    }
+
+    function saveHistory() {
+      localStorage.setItem('vtaper_history', JSON.stringify(historyData));
+      localStorage.setItem('vtaper_cum_reps', JSON.stringify(cumRepsData));
+    }
+
+    function loadStoredRoutine() {
+      const saved = localStorage.getItem('vtaper_active_routine');
+      if (saved) {
+        try { activeRoutine = JSON.parse(saved); } catch(e) { activeRoutine = JSON.parse(JSON.stringify(DEFAULT_ACTIVE_ROUTINE)); }
+      } else {
+        activeRoutine = JSON.parse(JSON.stringify(DEFAULT_ACTIVE_ROUTINE));
+      }
+
+      const savedDay = localStorage.getItem('vtaper_session_day');
+      if (savedDay) document.getElementById('sessionDayInput').value = savedDay;
+
+      const savedDate = localStorage.getItem('vtaper_session_date');
+      if (savedDate) document.getElementById('sessionDateInput').value = savedDate;
+
+      updateSessionMetadata();
+    }
+
+    function saveRoutine() {
+      localStorage.setItem('vtaper_active_routine', JSON.stringify(activeRoutine));
+      document.getElementById('exerciseCount').innerText = activeRoutine.length;
+    }
+
+    function updateSessionMetadata() {
+      const dayVal = document.getElementById('sessionDayInput').value || '20';
+      const dateVal = document.getElementById('sessionDateInput').value || '2026-10-27';
+
+      const d = new Date(dateVal);
+      const formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+
+      document.getElementById('headerSubtitle').innerText = `Day ${dayVal} - ${formattedDate}`;
+
+      localStorage.setItem('vtaper_session_day', dayVal);
+      localStorage.setItem('vtaper_session_date', dateVal);
+    }
+
+    function renderExerciseList() {
+      const container = document.getElementById('exerciseList');
+      container.innerHTML = '';
+
+      activeRoutine.forEach((ex, index) => {
+        const borderClass = `card-border-${ex.status.toLowerCase()}`;
+        
+        let statusBadgeClass = 'bg-amber-500 text-black';
+        if (ex.status === 'PROGRESS') statusBadgeClass = 'bg-emerald-500 text-white';
+        if (ex.status === 'RESET') statusBadgeClass = 'bg-red-500 text-white';
+        if (ex.status === 'FREE') statusBadgeClass = 'bg-purple-500 text-white';
+
+        const card = document.createElement('div');
+        card.className = `bg-slate-800/90 rounded-xl p-4 border border-slate-700/80 shadow-md ${borderClass} relative`;
+        
+        let setsInputsHtml = '';
+        ex.sets.forEach((setReps, setIdx) => {
+          setsInputsHtml += `
+            <div>
+              <label class="text-[10px] text-slate-400 block font-medium mb-1">Set ${setIdx + 1}</label>
+              <input type="number" value="${setReps}" onchange="updateSet('${ex.id}', ${setIdx}, this.value)" class="w-full bg-slate-900 border border-slate-700 text-center font-bold text-slate-100 rounded py-1.5 text-sm focus:outline-none focus:border-blue-500" />
+            </div>
+          `;
+        });
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div>
+              <h2 class="text-base font-bold text-white leading-tight">${ex.name}</h2>
+              <p class="text-xs text-slate-400 mt-0.5">${ex.target}</p>
+            </div>
+            
+            <div class="flex items-center gap-1">
+              <button onclick="moveExercise(${index}, -1)" ${index === 0 ? 'disabled class="opacity-30 cursor-not-allowed px-1.5 py-1 text-slate-500"' : 'class="px-1.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold rounded"'} title="Move Up">▲</button>
+              <button onclick="moveExercise(${index}, 1)" ${index === activeRoutine.length - 1 ? 'disabled class="opacity-30 cursor-not-allowed px-1.5 py-1 text-slate-500"' : 'class="px-1.5 py-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold rounded"'} title="Move Down">▼</button>
+              <button onclick="removeExercise(${index})" class="px-2 py-1 bg-red-950/60 hover:bg-red-900 text-red-300 border border-red-800/60 text-xs font-bold rounded ml-1 transition" title="Remove Exercise">✕</button>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between my-3 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+            <div>
+              <span class="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Target Load (kg)</span>
+              <div class="flex items-center gap-1 mt-0.5">
+                <input type="number" step="0.5" value="${ex.weight}" onchange="updateWeight('${ex.id}', this.value)" class="w-20 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xl font-black text-white focus:outline-none focus:border-blue-500" />
+                <span class="text-xs font-semibold text-blue-400">kg</span>
+              </div>
+            </div>
+
+            <div>
+              <span class="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold mb-1 text-right">Tag</span>
+              <button onclick="cycleStatus('${ex.id}')" class="px-3 py-1.5 rounded-full text-xs font-black tracking-wide ${statusBadgeClass} shadow transition transform active:scale-95">
+                ${ex.status === 'PROGRESS' ? '[UP / PROGRESS]' : `[${ex.status}]`}
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 my-2">
+            ${setsInputsHtml}
+          </div>
+
+          <div class="flex items-center justify-between mt-2 pt-1 border-t border-slate-700/40">
+            <div class="flex gap-1">
+              <button onclick="addSet('${ex.id}')" class="text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-0.5 rounded transition">+ Set</button>
+              <button onclick="removeSet('${ex.id}')" class="text-[10px] bg-slate-700 hover:bg-slate-600 text-slate-300 px-2 py-0.5 rounded transition">- Set</button>
+            </div>
+            <input type="text" value="${ex.note || ''}" placeholder="Session cues..." onchange="updateNote('${ex.id}', this.value)" class="w-2/3 bg-slate-900/40 border border-slate-800 text-xs text-slate-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500/50" />
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+
+      document.getElementById('exerciseCount').innerText = activeRoutine.length;
+    }
+
+    function moveExercise(index, direction) {
+      const newIndex = index + direction;
+      if (newIndex < 0 || newIndex >= activeRoutine.length) return;
+      const temp = activeRoutine[index];
+      activeRoutine[index] = activeRoutine[newIndex];
+      activeRoutine[newIndex] = temp;
+      saveRoutine();
+      renderExerciseList();
+    }
+
+    function removeExercise(index) {
+      const removedName = activeRoutine[index].name;
+      activeRoutine.splice(index, 1);
+      saveRoutine();
+      renderExerciseList();
+      showToast(`Removed "${removedName}" from session`);
+    }
+
+    function updateWeight(id, val) {
+      const ex = activeRoutine.find(e => e.id === id);
+      if (ex) {
+        ex.weight = parseFloat(val) || 0;
+        saveRoutine();
+      }
+    }
+
+    function cycleStatus(id) {
+      const statuses = ['HOLD', 'PROGRESS', 'RESET', 'FREE'];
+      const ex = activeRoutine.find(e => e.id === id);
+      if (ex) {
+        const currIndex = statuses.indexOf(ex.status);
+        ex.status = statuses[(currIndex + 1) % statuses.length];
+        saveRoutine();
+        renderExerciseList();
+      }
+    }
+
+    function updateSet(id, setIdx, val) {
+      const ex = activeRoutine.find(e => e.id === id);
+      if (ex) {
+        ex.sets[setIdx] = parseInt(val) || 0;
+        saveRoutine();
+      }
+    }
+
+    function addSet(id) {
+      const ex = activeRoutine.find(e => e.id === id);
+      if (ex) {
+        ex.sets.push(10);
+        saveRoutine();
+        renderExerciseList();
+      }
+    }
+
+    function removeSet(id) {
+      const ex = activeRoutine.find(e => e.id === id);
+      if (ex && ex.sets.length > 1) {
+        ex.sets.pop();
+        saveRoutine();
+        renderExerciseList();
+      }
+    }
+
+    function updateNote(id, val) {
+      const ex = activeRoutine.find(e => e.id === id);
+      if (ex) {
+        ex.note = val;
+        saveRoutine();
+      }
+    }
+
+    function addCustomExercise() {
+      const name = document.getElementById('newExName').value.trim();
+      const target = document.getElementById('newExTarget').value.trim() || '3 x 10 reps';
+      const weight = parseFloat(document.getElementById('newExWeight').value) || 0;
+
+      if (!name) return showToast('Please enter an exercise name.');
+
+      const newEx = {
+        id: 'ex_' + Date.now(),
+        name: name,
+        status: 'PROGRESS',
+        target: target,
+        weight: weight,
+        sets: [10, 10, 10],
+        note: 'Custom exercise added'
+      };
+
+      activeRoutine.push(newEx);
+      saveRoutine();
+      renderExerciseList();
+
+      document.getElementById('newExName').value = '';
+      document.getElementById('newExTarget').value = '';
+      document.getElementById('newExWeight').value = '';
+
+      if (!historyData[name]) historyData[name] = [];
+      initSingleExSelect();
+      showToast(`Added "${name}" to active session`);
+    }
+
+    function commitSessionToMemory() {
+      const dayVal = parseInt(document.getElementById('sessionDayInput').value) || 20;
+      const dateVal = document.getElementById('sessionDateInput').value || '2026-10-27';
+      const d = new Date(dateVal);
+      const formattedDate = d.toLocaleDateString('en-US', { month: 'short', day: '2-digit' });
+
+      let sessionTotalReps = 0;
+
+      activeRoutine.forEach(ex => {
+        const exTotalReps = ex.sets.reduce((a, b) => a + b, 0);
+        sessionTotalReps += exTotalReps;
+
+        if (!historyData[ex.name]) historyData[ex.name] = [];
+
+        const existingEntryIdx = historyData[ex.name].findIndex(h => h.day === dayVal);
+        const newRecord = { day: dayVal, date: formattedDate, weight: ex.weight, reps: exTotalReps };
+
+        if (existingEntryIdx >= 0) {
+          historyData[ex.name][existingEntryIdx] = newRecord;
+        } else {
+          historyData[ex.name].push(newRecord);
+        }
+      });
+
+      const lastCumReps = cumRepsData.length > 0 ? cumRepsData[cumRepsData.length - 1].cum_reps : 5166;
+      const existingCumIdx = cumRepsData.findIndex(c => c.day === dayVal);
+      
+      if (existingCumIdx >= 0) {
+        cumRepsData[existingCumIdx] = { day: dayVal, date: formattedDate, cum_reps: lastCumReps + sessionTotalReps };
+      } else {
+        cumRepsData.push({ day: dayVal, date: formattedDate, cum_reps: lastCumReps + sessionTotalReps });
+      }
+
+      saveHistory();
+      initCharts();
+      updateTotalRepsDisplay();
+
+      showToast(`Saved Day ${dayVal} (${sessionTotalReps} reps) to graph memory!`);
+    }
+
+    function updateTotalRepsDisplay() {
+      const lastCum = cumRepsData.length > 0 ? cumRepsData[cumRepsData.length - 1].cum_reps : 5166;
+      document.getElementById('totalRepsDisplay').innerText = lastCum.toLocaleString();
+    }
+
+    function initCharts() {
+      // 1. Cumulative Reps Chart
+      const cumCtx = document.getElementById('cumRepsChart').getContext('2d');
+      if (cumChartInstance) cumChartInstance.destroy();
+
+      cumChartInstance = new Chart(cumCtx, {
+        type: 'line',
+        data: {
+          labels: cumRepsData.map(d => d.date),
+          datasets: [{
+            label: 'Cumulative Reps',
+            data: cumRepsData.map(d => d.cum_reps),
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      // 2. Master Load Progression Line Chart
+      const masterCtx = document.getElementById('masterChart').getContext('2d');
+      if (masterChartInstance) masterChartInstance.destroy();
+
+      const allDates = [...new Set(cumRepsData.map(d => d.date))];
+      const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#6366f1'];
+      const datasets = [];
+      const chipsContainer = document.getElementById('masterChartChips');
+      chipsContainer.innerHTML = '';
+
+      let colorIdx = 0;
+      Object.keys(historyData).forEach(exName => {
+        const exHistory = historyData[exName];
+        if (!exHistory || exHistory.length === 0) return;
+
+        const color = colors[colorIdx % colors.length];
+        colorIdx++;
+
+        const alignedWeightData = allDates.map(dateLabel => {
+          const entry = exHistory.find(h => h.date === dateLabel);
+          return entry ? entry.weight : null;
+        });
+
+        const ds = {
+          label: exName,
+          data: alignedWeightData,
+          borderColor: color,
+          backgroundColor: color,
+          borderWidth: 2,
+          tension: 0.2,
+          spanGaps: true,
+          pointRadius: 3,
+          hidden: !['Chest Press', 'Lat Machine', 'Shoulder Press', 'Face Pull', 'Pendulum Squat'].includes(exName)
+        };
+        datasets.push(ds);
+
+        const chip = document.createElement('button');
+        chip.className = `px-2 py-0.5 text-[10px] rounded font-semibold border transition ${!ds.hidden ? 'bg-slate-700 text-white border-blue-500' : 'bg-slate-900 text-slate-500 border-slate-800'}`;
+        chip.innerText = exName;
+        chip.onclick = () => {
+          ds.hidden = !ds.hidden;
+          chip.className = `px-2 py-0.5 text-[10px] rounded font-semibold border transition ${!ds.hidden ? 'bg-slate-700 text-white border-blue-500' : 'bg-slate-900 text-slate-500 border-slate-800'}`;
+          masterChartInstance.update();
+        };
+        chipsContainer.appendChild(chip);
+      });
+
+      masterChartInstance = new Chart(masterCtx, {
+        type: 'line',
+        data: {
+          labels: allDates,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { 
+              grid: { color: '#334155' }, 
+              ticks: { color: '#94a3b8' } 
+            },
+            y: { 
+              grid: { color: '#334155' }, 
+              ticks: { color: '#94a3b8' }, 
+              title: { display: true, text: 'Weight (kg)', color: '#94a3b8' } 
+            }
+          }
+        }
+      });
+    }
+
+    function initSingleExSelect() {
+      const select = document.getElementById('singleExSelect');
+      select.innerHTML = '';
+      Object.keys(historyData).forEach(exName => {
+        const opt = document.createElement('option');
+        opt.value = exName;
+        opt.innerText = exName;
+        select.appendChild(opt);
+      });
+      updateSingleExChart();
+    }
+
+    function updateSingleExChart() {
+      const exName = document.getElementById('singleExSelect').value;
+      const exData = historyData[exName] || [];
+
+      const ctx = document.getElementById('singleExChart').getContext('2d');
+      if (singleChartInstance) singleChartInstance.destroy();
+
+      singleChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: exData.map(d => d.date),
+          datasets: [{
+            label: `${exName} (kg)`,
+            data: exData.map(d => d.weight),
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.2,
+            pointRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+    }
+
+    function switchTab(tabName) {
+      document.getElementById('tabPlanner').classList.add('hidden');
+      document.getElementById('tabCharts').classList.add('hidden');
+      document.getElementById('tabGuide').classList.add('hidden');
+
+      document.getElementById('tabBtnPlanner').className = "flex-1 py-2 text-xs font-semibold rounded-md text-slate-400 hover:text-white transition-all";
+      document.getElementById('tabBtnCharts').className = "flex-1 py-2 text-xs font-semibold rounded-md text-slate-400 hover:text-white transition-all";
+      document.getElementById('tabBtnGuide').className = "flex-1 py-2 text-xs font-semibold rounded-md text-slate-400 hover:text-white transition-all";
+
+      if (tabName === 'planner') {
+        document.getElementById('tabPlanner').classList.remove('hidden');
+        document.getElementById('tabBtnPlanner').className = "flex-1 py-2 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all";
+      } else if (tabName === 'charts') {
+        document.getElementById('tabCharts').classList.remove('hidden');
+        document.getElementById('tabBtnCharts').className = "flex-1 py-2 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all";
+        
+        // Trigger resize so Chart.js renders immediately when tab becomes visible
+        setTimeout(() => {
+          if (masterChartInstance) masterChartInstance.resize();
+          if (cumChartInstance) cumChartInstance.resize();
+          if (singleChartInstance) singleChartInstance.resize();
+        }, 50);
+      } else if (tabName === 'guide') {
+        document.getElementById('tabGuide').classList.remove('hidden');
+        document.getElementById('tabBtnGuide').className = "flex-1 py-2 text-xs font-semibold rounded-md bg-blue-600 text-white shadow-sm transition-all";
+      }
+    }
+
+    function exportData() {
+      const exportObj = {
+        routine: activeRoutine,
+        history: historyData,
+        cumReps: cumRepsData
+      };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportObj));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "vtaper_workout_data.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('Exported vtaper_workout_data.json');
+    }
+
+    function importData(event) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (imported.routine) {
+            activeRoutine = imported.routine;
+            historyData = imported.history || historyData;
+            cumRepsData = imported.cumReps || cumRepsData;
+            saveRoutine();
+            saveHistory();
+            renderExerciseList();
+            initCharts();
+            initSingleExSelect();
+            updateTotalRepsDisplay();
+            showToast('Workout backup imported successfully!');
+          }
+        } catch(err) {
+          showToast('Invalid backup JSON format.');
+        }
+      };
+      reader.readAsText(event.target.files[0]);
+    }
+
+    function copyWorkoutSummary() {
+      const dayVal = document.getElementById('sessionDayInput').value || '20';
+      const dateVal = document.getElementById('sessionDateInput').value || '2026-10-27';
+      let summary = `V-Taper Session Summary - Day ${dayVal} (${dateVal})\n\n`;
+      
+      activeRoutine.forEach(ex => {
+        const totalReps = ex.sets.reduce((a,b)=>a+b,0);
+        summary += `• ${ex.name} [${ex.status}]: ${ex.weight}kg | Sets: ${ex.sets.join('-')} (${totalReps} total reps) | Note: ${ex.note || 'N/A'}\n`;
+      });
+      
+      const textArea = document.createElement("textarea");
+      textArea.value = summary;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      showToast('Summary copied to clipboard!');
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toastMessage');
+      document.getElementById('toastText').innerText = msg;
+      toast.classList.remove('hidden');
+      setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
